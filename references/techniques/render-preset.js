@@ -18,7 +18,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 // the world can be loaded in Node to test geometry, timeline determinism and framing without a GPU or a browser.
 const cpuStub=()=>globalThis.WORLD_CPU_STUB===true;
 function stubRig(scene){const renderer={domElement:{addEventListener(){},removeEventListener(){},setPointerCapture(){},releasePointerCapture(){},requestPointerLock(){},getRootNode(){return globalThis.document;},ownerDocument:globalThis.document,style:{},clientWidth:1280,clientHeight:800,getBoundingClientRect(){return {left:0,top:0,width:1280,height:800};}},shadowMap:{enabled:true},setSize(){},setPixelRatio(){},render(){},toneMappingExposure:1,domElementStub:true};
-  return {renderer,env:null,sun:null,skyFill:null,post:null,render(){},setSize(){},finalize(){},stub:true};}
+  const finalize=()=>enableShadows(scene);let n=0;return {renderer,env:null,sun:null,skyFill:null,post:null,render(){if(n++%300===0)finalize();},setSize(){},finalize,stub:true};}
 export function createRenderer({canvas, exposure=1, toneMapping='aces', maxPixelRatio=2}={}) {
   if(cpuStub())return stubRig().renderer;
   const renderer=new THREE.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
@@ -205,8 +205,19 @@ export function setupOutdoorRendering(scene, camera, {canvas, bounds, mood='clea
   if(fog)addAtmosphere(scene, {density:m.fogDensity});
   const post=createPostChain(renderer, scene, camera, {aoRadius, aoBounds:bounds, bloom});
   window.addEventListener('resize', ()=>post.setSize(window.innerWidth, window.innerHeight));
-  return {renderer, env, sun, skyFill, post, render:post.render, setSize:post.setSize,
-    finalize(){enableShadows(scene); applyTextureDefaults(scene, renderer);}};
+  const finalize=selfFinalizing(scene, renderer);
+  return {renderer, env, sun, skyFill, post, render:()=>{finalize.tick();post.render();}, setSize:post.setSize, finalize};
+}
+
+
+/* finalize() turns on shadows and texture defaults for everything in the scene. A build that forgets to call it renders
+ * with no cast shadows at all (every object floats), so render() runs it itself on the first frame and again every
+ * few hundred frames to catch meshes added later. Calling finalize() explicitly after building is still the right habit. */
+function selfFinalizing(scene, renderer){
+  let frames=0;
+  const fn=function(){enableShadows(scene); applyTextureDefaults(scene, renderer); frames=1;};
+  fn.tick=()=>{if(frames===0||(++frames%300===0))fn();};
+  return fn;
 }
 
 /** Interior/night variant: room environment for reflections, no sun; add your own lamps with castShadow. */
@@ -216,6 +227,6 @@ export function setupInteriorRendering(scene, camera, {canvas, bounds, exposure=
   const env=createRoomEnvironment(scene, renderer, {intensity:envIntensity});
   const post=createPostChain(renderer, scene, camera, {aoRadius, aoBounds:bounds, bloom, bloomStrength});
   window.addEventListener('resize', ()=>post.setSize(window.innerWidth, window.innerHeight));
-  return {renderer, env, post, render:post.render, setSize:post.setSize,
-    finalize(){enableShadows(scene); applyTextureDefaults(scene, renderer);}};
+  const finalize=selfFinalizing(scene, renderer);
+  return {renderer, env, post, render:()=>{finalize.tick();post.render();}, setSize:post.setSize, finalize};
 }

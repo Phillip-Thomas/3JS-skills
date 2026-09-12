@@ -125,7 +125,7 @@ try{
       else if(e.meanLuma>0.85||e.brightFraction>0.40)result.problems.push(`${label} is overexposed (mean luminance ${e.meanLuma}, ${Math.round(e.brightFraction*100)}% blown out): lower exposure only`);};
     // Shadow visibility from the hero view: re-render with the sun's shadow off and count changed pixels. Shadows that fall
     // away from the camera read as "no shadows" to a viewer, whatever the shadow map says.
-    const shadowShare=await page.evaluate(()=>{const w=worldTest;let sun=null;w.scene.traverse(o=>{if(o.isDirectionalLight&&o.castShadow&&!sun)sun=o;});if(!sun)return null;
+    const shadowShare=await page.evaluate(()=>{const w=worldTest;let sun=null,lamp=null;w.scene.traverse(o=>{if(o.isDirectionalLight&&o.castShadow&&!sun)sun=o;if((o.isSpotLight||o.isPointLight)&&o.castShadow&&!lamp)lamp=o;});sun=sun??lamp;/* interiors: the first shadowed lamp stands in for the sun */if(!sun)return null;
       w.setView(0);const render=()=>{if(typeof w.render==='function')w.render();else w.renderer.render(w.scene,w.camera);};
       const grab=()=>{render();const c=w.renderer.domElement,o=document.createElement('canvas');o.width=320;o.height=200;const g=o.getContext('2d');g.drawImage(c,0,0,320,200);return g.getImageData(0,0,320,200).data;};
       const a=grab();sun.castShadow=false;const b=grab();sun.castShadow=true;w.renderer.shadowMap.needsUpdate=true;render();

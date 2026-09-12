@@ -36,7 +36,10 @@ try{
   // density profile: what a viewer will find when walking the scene
   const prof={meshes,vertices:verts,instances:0,instancedMeshes:0,materials:new Set(),bakedMaterials:new Set(),geometries:new Set(),lights:0,shadowLights:0,textured:0};
   w.scene.traverse(o=>{if(o.isInstancedMesh){prof.instancedMeshes++;prof.instances+=o.count;}if(o.isMesh){for(const m of [].concat(o.material))if(m){prof.materials.add(m.uuid);if(m.map||m.normalMap||m.roughnessMap)prof.bakedMaterials.add(m.uuid);if(m.map)prof.textured++;}if(o.geometry)prof.geometries.add(o.geometry.uuid);}if(o.isLight){prof.lights++;if(o.castShadow)prof.shadowLights++;}});
-  result.profile={meshes,vertices:verts,instancedMeshes:prof.instancedMeshes,instances:prof.instances,uniqueMaterials:prof.materials.size,bakedMaterials:prof.bakedMaterials.size,texturedMeshes:prof.textured,uniqueGeometries:prof.geometries.size,lights:prof.lights,shadowLights:prof.shadowLights};
+  // shadow casters: rig.render() enables shadows on first frame; a low share after that means meshes were flagged noShadow or the rig was bypassed
+  try{w.render?.();}catch{}let casters=0;w.scene.traverse(o=>{if(o.isMesh&&o.castShadow)casters++;});prof.shadowCasters=casters;
+  if(meshes>0&&casters/meshes<0.5)result.problems.push(`only ${casters}/${meshes} meshes cast shadows: call rig.finalize() after building (or let rig.render() run) so objects are grounded by their shadows`);
+  result.profile={meshes,vertices:verts,instancedMeshes:prof.instancedMeshes,instances:prof.instances,uniqueMaterials:prof.materials.size,bakedMaterials:prof.bakedMaterials.size,texturedMeshes:prof.textured,uniqueGeometries:prof.geometries.size,lights:prof.lights,shadowLights:prof.shadowLights,shadowCasters:prof.shadowCasters};
   result.notes.push(`${meshes} meshes, ${verts} vertices, ${prof.instances} instances, ${prof.bakedMaterials.size} baked materials, ${prof.shadowLights} shadow lights`);
   // stats/entities at sampled times + activity + determinism
   const snap=t=>{w.setTime(t);const s=w.stats();return {s,json:JSON.stringify(s)};};

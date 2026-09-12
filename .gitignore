@@ -1,0 +1,3 @@
+node_modules/
+inspect.config.json
+*.log

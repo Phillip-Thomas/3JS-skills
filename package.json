@@ -1,0 +1,11 @@
+{
+  "name": "threejs-world-builder-bundle",
+  "private": true,
+  "type": "module",
+  "description": "Minimal portable bundle: the world-builder skill set, the construction/render module sources, the inspection tool and the builder prompt.",
+  "dependencies": {
+    "three": "0.185.1",
+    "vite": "8.2.2",
+    "playwright-core": "1.63.0"
+  }
+}

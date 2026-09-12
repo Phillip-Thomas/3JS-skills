@@ -1,0 +1,4 @@
+interface:
+  display_name: "Three.js World Builder"
+  short_description: "Build coherent worlds with the full fidelity library"
+  default_prompt: "Use $threejs-world-builder to create an explorable WebGL world from this brief."

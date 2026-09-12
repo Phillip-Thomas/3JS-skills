@@ -1,0 +1,6 @@
+{
+  "chromium": "/path/to/chromium (optional; playwright-core's default Chromium if omitted)",
+  "browserArgs": ["--use-angle=gl", "--enable-gpu", "--ignore-gpu-blocklist", "--disable-dev-shm-usage"],
+  "lock": "/path/to/a/flock/file (optional; serialises GPU use across parallel builders)",
+  "limit": 2
+}

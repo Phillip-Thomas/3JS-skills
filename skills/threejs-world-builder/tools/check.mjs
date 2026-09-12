@@ -67,6 +67,41 @@ try{
       for(const b of boxes)if(b.box.containsPoint(p)){fail(`view ${i} '${v.name}' is inside mesh '${b.name}' at t=${t}`);break;}
       for(const e of ents){const q=new THREE.Vector3().fromArray(e.position).project(cam);if(Math.abs(q.x)<0.95&&Math.abs(q.y)<0.95&&q.z<1)(framed[e.name]??=new Set()).add(i);}});
     for(const e of ents)if(!(framed[e.name]?.size))fail(`anchor '${e.name}' is not framed by any view (t=${t})`);}
+  // --- support contact and horizon: the two things graders flag in every build that the eye cannot miss ---
+  // full box set, one box per instance for instanced meshes (setts, planks, straw are what most things stand on)
+  const allBoxes=[];{const m4=new THREE.Matrix4();w.setTime(0);w.scene.updateMatrixWorld(true);}
+  const collectBoxes=()=>{allBoxes.length=0;const m4=new THREE.Matrix4();w.scene.updateMatrixWorld(true);w.scene.traverse(o=>{if(!o.isMesh||!o.geometry)return;if(!o.geometry.boundingBox)o.geometry.computeBoundingBox();const b=o.geometry.boundingBox;if(!b)return;
+    if(o.isInstancedMesh){const n=Math.min(o.count,20000);for(let i=0;i<n;i++){o.getMatrixAt(i,m4);m4.premultiply(o.matrixWorld);const wb=b.clone().applyMatrix4(m4);allBoxes.push({o,box:wb});}}
+    else{const wb=b.clone().applyMatrix4(o.matrixWorld);const sz=wb.getSize(new THREE.Vector3());allBoxes.push({o,box:wb,size:Math.max(sz.x,sz.y,sz.z)});/* everything, sky dome included: enclosing boxes are skipped per test */}});};
+  const inSubtree=(o,root)=>{for(let p=o;p;p=p.parent)if(p===root)return true;return false;};
+  // support: every named prop, figure or animal must touch something (ground, table, hand, hook, wall) at t=0 and t=24.
+  // Set userData.floating=true on things meant to hang in the air (smoke, a bird in flight).
+  const floating=new Map();
+  for(const t of [0,24]){w.setTime(t);collectBoxes();
+    // candidates: every named object and every unnamed mesh (a pan hanging free inside a named 'scale' group is a mesh)
+    const label=o=>{for(let p=o;p&&p!==w.scene;p=p.parent)if(p.name)return p.name;return o.type;};
+    w.scene.traverse(o=>{if(o===w.scene||o.isLight||o.isCamera||o.isBone||o.isInstancedMesh||o.isSkinnedMesh||o.userData?.floating)return;if(!o.name&&!o.isMesh)return;
+      for(let p=o.parent;p&&p!==w.scene;p=p.parent)if(p.userData?.floating||p.userData?.pose)return;/* figure parts are posed, not placed */
+      let hasMesh=false;o.traverse(c=>{if(c.isMesh&&!c.isInstancedMesh)hasMesh=true;});if(!hasMesh)return;
+      const cb=new THREE.Box3();for(const b of allBoxes)if(inSubtree(b.o,o))cb.union(b.box);if(cb.isEmpty())return;
+      const sz=cb.getSize(new THREE.Vector3());if(Math.max(sz.x,sz.y,sz.z)>8||Math.max(sz.x,sz.y,sz.z)<0.05)return;
+      const probe=cb.clone().expandByScalar(0.06);let touching=false,below=-Infinity,belowName=null;
+      for(const b of allBoxes){if(inSubtree(b.o,o)||b.box.containsBox(cb))continue;/* a sky dome or fog sphere encloses everything and supports nothing */if(probe.intersectsBox(b.box)){touching=true;break;}
+        if(b.box.max.y<=cb.min.y&&b.box.max.x>cb.min.x&&b.box.min.x<cb.max.x&&b.box.max.z>cb.min.z&&b.box.min.z<cb.max.z&&b.box.max.y>below){below=b.box.max.y;belowName=b.o.name||b.o.parent?.name||'mesh';}}
+      const key=o.name||(label(o)+'#'+o.id);if(!touching&&!floating.has(key))floating.set(key,`'${o.name||('part of '+label(o))}' floats at t=${t}: nothing within 6 cm${belowName?`, ${(cb.min.y-below).toFixed(2)} m of air above '${belowName}'`:''}`);});}
+  for(const m of [...floating.values()].slice(0,15))fail(m+' (rest it on its support, parent it to the hand or hook that holds it, or set userData.floating=true if it truly hangs in air)');
+  if(floating.size>15)fail(`${floating.size-15} more floating objects not listed`);
+  // horizon: from each declared view, horizontal sight lines fanned across the frame must meet geometry within 80 m.
+  // Rays that escape are the world ending in view: a bare plane to the frame edge, a doorway onto nothing.
+  w.setTime(0);collectBoxes();
+  const rayHit=(org,dir,maxT)=>{let best=maxT;for(const {box:b} of allBoxes){if(b.containsPoint(org))continue;/* the sky dome or a room shell around the camera is not the horizon */let t0=0,t1=best,ok=true;for(const ax of ['x','y','z']){const d=dir[ax],p=org[ax];if(Math.abs(d)<1e-9){if(p<b.min[ax]||p>b.max[ax]){ok=false;break;}}else{let ta=(b.min[ax]-p)/d,tb=(b.max[ax]-p)/d;if(ta>tb)[ta,tb]=[tb,ta];t0=Math.max(t0,ta);t1=Math.min(t1,tb);if(t0>t1){ok=false;break;}}}if(ok&&t0>0.1&&t0<best)best=t0;}return best<maxT;};
+  const horizon=[];
+  w.views.forEach((v,i)=>{const org=new THREE.Vector3().fromArray(v.position),tg=new THREE.Vector3().fromArray(v.target);const yaw=Math.atan2(tg.x-org.x,tg.z-org.z);let esc=0,n=0;if(org.y-tg.y>2.5){horizon.push(`${i}:elevated`);return;}/* an elevated view looks down at the stage, not at the horizon */
+    // a sight line escapes if the level ray and a slightly raised one both meet nothing standing within 200 m; a bare
+    // ground plane does not count, because a plane to the frame edge is exactly what a viewer reads as the world ending
+    for(const dy of [-1.0,-0.6,-0.3,0,0.3,0.6,1.0]){n++;let any=false;for(const pitch of [0,0.05]){const d=new THREE.Vector3(Math.sin(yaw+dy)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw+dy)*Math.cos(pitch));if(rayHit(org,d,200)){any=true;break;}}if(!any)esc++;}
+    horizon.push(`${i}:${esc}/${n}`);if(esc/n>0.4)fail(`view ${i} '${v.name}': ${esc} of ${n} sight lines meet nothing within 200 m: the world ends in view; add context to the horizon (far buildings, a tree line, hills, a backdrop ring) or close the envelope`);});
+  result.notes.push(`escaping sight lines per view: ${horizon.join(' ')}`);
   w.setView(0);w.setTime(0);
   result.ok=result.problems.length===0;
 }catch(e){result.error=String(e.stack||e).split('\n').slice(0,4).join(' | ');}

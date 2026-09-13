@@ -77,7 +77,7 @@ export function planSettlement({center=[0,0],kind='village',seed=1,radius=null,a
   const roads=streets.map(s=>({points:s.points,width:s.width,verge:s.kind==='main'?3:2}));
   const pads=lots.map(l=>({x:l.x,z:l.z,r:Math.max(l.w,l.d)*0.72,blend:6}));
   if(square)pads.unshift({x:square.x,z:square.z,r:square.r+4,blend:45}); // a wide blend: no bank around the square
-  const smoothRegion={x:cx,z:cz,r:R*1.15,blend:80,radius:kind==='city'?90:60,flatten:kind==='hamlet'?0.5:0.85}; // towns sit nearly level
+  const smoothRegion={x:cx,z:cz,r:R*1.15,blend:80,radius:kind==='city'?90:60,flatten:kind==='hamlet'?0.5:kind==='village'?0.75:0.97}; // towns and cities sit level; the 80 m blend carries the slope outside
   const tint={x:cx,z:cz,r:R*0.95,blend:40,color:kind==='city'?0x8a8378:0x7a6a50,amount:kind==='hamlet'?0.3:0.45}; // trodden town ground
   return {streets,roads,lots,pads,square,smoothRegion,tint,center:[cx,cz],radius:R,kind,seed,axis:[ax.x,ax.y],walkNetwork:streets.map(s=>s.points)};
 }

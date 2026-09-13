@@ -141,7 +141,7 @@ export function createTerrain({size=2000,seed=1,relief='rolling',amplitude=null,
       const d=Math.hypot(x-sx,z-sz);return d>(stage.radius??40)+margin;},
     isWater(x,z){if(waterLevel!==null&&height(x,z)<waterLevel)return true;for(const rv of riverList){const b=rv.bbox;if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue;const n=rv.nearest(x,z);if(n&&n.d<rv.width/2+1)return true;}return false;},
     /** a paved disc that follows the ground (a square, a yard); metric UVs in metres */
-    pave({x,z,r,material,lift=0.06,res=1.5}){const n=Math.max(8,Math.ceil(2*r/res));const src=new THREE.PlaneGeometry(2*r,2*r,n,n);src.rotateX(-Math.PI/2);const sp=src.attributes.position;const tile=tileOf(material);
+    pave({x,z,r,material,lift=0.05,res=null}){res=res??nearRes;/* the disc grid shares the near mesh's lattice, so both sample the same heights */const ox=sx-nearRadius,oz=sz-nearRadius;const n=Math.max(8,Math.ceil(2*r/res))+2;const src=new THREE.PlaneGeometry(n*res,n*res,n,n);src.rotateX(-Math.PI/2);src.translate(Math.round((x-ox)/res)*res+ox-x,0,Math.round((z-oz)/res)*res+oz-z);const sp=src.attributes.position;const tile=tileOf(material);
       // keep only triangles inside the circle so the disc follows the ground everywhere, not just at its rim
       const pos=[],uv=[],idx=[],map=new Int32Array(sp.count).fill(-1);const inside=i=>Math.hypot(sp.getX(i),sp.getZ(i))<=r+res*0.6;
       for(let i=0;i<sp.count;i++)if(inside(i)){const lx=sp.getX(i),lz=sp.getZ(i);const d=Math.hypot(lx,lz);const k=d>r?r/d:1;const px=x+lx*k,pz=z+lz*k;map[i]=pos.length/3;pos.push(px,height(px,pz)+lift,pz);uv.push(px/tile[0],pz/tile[1]);}

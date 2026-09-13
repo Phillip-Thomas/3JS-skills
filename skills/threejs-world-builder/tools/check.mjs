@@ -74,19 +74,29 @@ try{
     if(o.isInstancedMesh){const n=Math.min(o.count,20000);for(let i=0;i<n;i++){o.getMatrixAt(i,m4);m4.premultiply(o.matrixWorld);const wb=b.clone().applyMatrix4(m4);allBoxes.push({o,box:wb});}}
     else{const wb=b.clone().applyMatrix4(o.matrixWorld);const sz=wb.getSize(new THREE.Vector3());allBoxes.push({o,box:wb,size:Math.max(sz.x,sz.y,sz.z)});/* everything, sky dome included: enclosing boxes are skipped per test */}});};
   const inSubtree=(o,root)=>{for(let p=o;p;p=p.parent)if(p===root)return true;return false;};
+  // uniform grid over the boxes so the support test is linear, and a coarse height grid for any mesh whose box encloses
+  // the candidate (a terrain heightfield): such a mesh supports what sits within its local vertical band
+  const CELL=6;let grid=new Map();const gkey=(x,z)=>`${Math.floor(x/CELL)},${Math.floor(z/CELL)}`;
+  const indexBoxes=()=>{grid=new Map();for(const b of allBoxes){if(b.size>250)continue;const x0=Math.floor(b.box.min.x/CELL),x1=Math.floor(b.box.max.x/CELL),z0=Math.floor(b.box.min.z/CELL),z1=Math.floor(b.box.max.z/CELL);if((x1-x0+1)*(z1-z0+1)>4000)continue;for(let gx=x0;gx<=x1;gx++)for(let gz=z0;gz<=z1;gz++){const k=`${gx},${gz}`;(grid.get(k)??grid.set(k,[]).get(k)).push(b);}}};
+  const near=(box)=>{const out=new Set();const x0=Math.floor(box.min.x/CELL),x1=Math.floor(box.max.x/CELL),z0=Math.floor(box.min.z/CELL),z1=Math.floor(box.max.z/CELL);for(let gx=x0;gx<=x1;gx++)for(let gz=z0;gz<=z1;gz++){const l=grid.get(`${gx},${gz}`);if(l)for(const b of l)out.add(b);}return out;};
+  const hfCache=new WeakMap();const HF=4;
+  const heightBand=(o,x,z)=>{let hf=hfCache.get(o);if(!hf){hf=new Map();const a=o.geometry.attributes.position;const v=new THREE.Vector3();for(let i=0;i<a.count;i+=1){v.fromBufferAttribute(a,i).applyMatrix4(o.matrixWorld);const k=`${Math.floor(v.x/HF)},${Math.floor(v.z/HF)}`;const c=hf.get(k);if(!c)hf.set(k,{lo:v.y,hi:v.y});else{if(v.y<c.lo)c.lo=v.y;if(v.y>c.hi)c.hi=v.y;}}hfCache.set(o,hf);}
+    let lo=Infinity,hi=-Infinity;for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const c=hf.get(`${Math.floor(x/HF)+dx},${Math.floor(z/HF)+dz}`);if(c){lo=Math.min(lo,c.lo);hi=Math.max(hi,c.hi);}}return lo===Infinity?null:{lo,hi};};
   // support: every named prop, figure or animal must touch something (ground, table, hand, hook, wall) at t=0 and t=24.
   // Set userData.floating=true on things meant to hang in the air (smoke, a bird in flight).
   const floating=new Map();
-  for(const t of [0,24]){w.setTime(t);collectBoxes();
+  for(const t of [0,24]){w.setTime(t);collectBoxes();indexBoxes();const enclosing=allBoxes.filter(b=>b.size>60&&!b.o.isInstancedMesh);
     // candidates: every named object and every unnamed mesh (a pan hanging free inside a named 'scale' group is a mesh)
     const label=o=>{for(let p=o;p&&p!==w.scene;p=p.parent)if(p.name)return p.name;return o.type;};
     w.scene.traverse(o=>{if(o===w.scene||o.isLight||o.isCamera||o.isBone||o.isInstancedMesh||o.isSkinnedMesh||o.userData?.floating)return;if(!o.name&&!o.isMesh)return;
       for(let p=o.parent;p&&p!==w.scene;p=p.parent)if(p.userData?.floating||p.userData?.pose)return;/* figure parts are posed, not placed */
       let hasMesh=false;o.traverse(c=>{if(c.isMesh&&!c.isInstancedMesh)hasMesh=true;});if(!hasMesh)return;
       const cb=new THREE.Box3();for(const b of allBoxes)if(inSubtree(b.o,o))cb.union(b.box);if(cb.isEmpty())return;
-      const sz=cb.getSize(new THREE.Vector3());if(Math.max(sz.x,sz.y,sz.z)>8||Math.max(sz.x,sz.y,sz.z)<0.05)return;
+      const sz=cb.getSize(new THREE.Vector3());if(process.env.CHECK_DEBUG&&o.name===process.env.CHECK_DEBUG){const wp=o.getWorldPosition(new THREE.Vector3());console.error('DEBUG',o.name,'t=',t,'pos',wp.toArray().map(v=>+v.toFixed(2)),'box',cb.min.toArray().map(v=>+v.toFixed(2)),cb.max.toArray().map(v=>+v.toFixed(2)));o.traverse(c=>{if(c.isMesh){const b=allBoxes.find(x=>x.o===c);if(b)console.error('  mesh',c.type,c.name,b.box.min.toArray().map(v=>+v.toFixed(2)),b.box.max.toArray().map(v=>+v.toFixed(2)));}});}
+      if(Math.max(sz.x,sz.y,sz.z)>8||Math.max(sz.x,sz.y,sz.z)<0.05)return;
       const probe=cb.clone().expandByScalar(0.06);let touching=false,below=-Infinity,belowName=null;
-      for(const b of allBoxes){if(inSubtree(b.o,o)||b.box.containsBox(cb))continue;/* a sky dome or fog sphere encloses everything and supports nothing */if(probe.intersectsBox(b.box)){touching=true;break;}
+      for(const b of enclosing){if(inSubtree(b.o,o)||!b.box.containsBox(cb))continue;const band=heightBand(b.o,(cb.min.x+cb.max.x)/2,(cb.min.z+cb.max.z)/2);if(band&&cb.min.y<=band.hi+0.3&&cb.max.y>=band.lo-0.3){touching=true;break;}}
+      if(!touching)for(const b of near(probe)){if(inSubtree(b.o,o)||b.box.containsBox(cb))continue;/* a sky dome or fog sphere encloses everything and supports nothing */if(probe.intersectsBox(b.box)){touching=true;break;}
         if(b.box.max.y<=cb.min.y&&b.box.max.x>cb.min.x&&b.box.min.x<cb.max.x&&b.box.max.z>cb.min.z&&b.box.min.z<cb.max.z&&b.box.max.y>below){below=b.box.max.y;belowName=b.o.name||b.o.parent?.name||'mesh';}}
       const key=o.name||(label(o)+'#'+o.id);if(!touching&&!floating.has(key))floating.set(key,`'${o.name||('part of '+label(o))}' floats at t=${t}: nothing within 6 cm${belowName?`, ${(cb.min.y-below).toFixed(2)} m of air above '${belowName}'`:''}`);});}
   for(const m of [...floating.values()].slice(0,15))fail(m+' (rest it on its support, parent it to the hand or hook that holds it, or set userData.floating=true if it truly hangs in air)');
@@ -102,6 +112,14 @@ try{
     for(const dy of [-1.0,-0.6,-0.3,0,0.3,0.6,1.0]){n++;let any=false;for(const pitch of [0,0.05]){const d=new THREE.Vector3(Math.sin(yaw+dy)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw+dy)*Math.cos(pitch));if(rayHit(org,d,200)){any=true;break;}}if(!any)esc++;}
     horizon.push(`${i}:${esc}/${n}`);if(esc/n>0.4)fail(`view ${i} '${v.name}': ${esc} of ${n} sight lines meet nothing within 200 m: the world ends in view; add context to the horizon (far buildings, a tree line, hills, a backdrop ring) or close the envelope`);});
   result.notes.push(`escaping sight lines per view: ${horizon.join(' ')}`);
+  // explorable radius: how far from the stage the world keeps something to find. Sample rings at 40..400 m; a point counts
+  // when a non-terrain box lies within 25 m of it. The 95th-percentile box distance is the world's radius.
+  {const c=w.views.length?w.views.map(v=>v.target).reduce((a,t)=>[a[0]+t[0]/w.views.length,a[1]+t[1]/w.views.length,a[2]+t[2]/w.views.length],[0,0,0]):[0,0,0];
+    const solid=allBoxes.filter(b=>b.size<60);const dists=solid.map(b=>Math.hypot((b.box.min.x+b.box.max.x)/2-c[0],(b.box.min.z+b.box.max.z)/2-c[2])).sort((a,b)=>a-b);
+    const radius=dists.length?dists[Math.floor(dists.length*0.95)]:0;let hit=0,n=0;
+    for(const R of [40,80,150,250,400])for(let k=0;k<10;k++){const a=k/10*Math.PI*2+R*0.01;const x=c[0]+Math.cos(a)*R,z=c[2]+Math.sin(a)*R;n++;let near=false;for(const b of solid){if(x>b.box.min.x-25&&x<b.box.max.x+25&&z>b.box.min.z-25&&z<b.box.max.z+25){near=true;break;}}if(near)hit++;}
+    result.profile.explorableRadius=+radius.toFixed(0);result.profile.farPointsFilled=`${hit}/${n}`;
+    result.notes.push(`explorable: ${radius.toFixed(0)} m radius of things to find, ${hit}/${n} far sample points (40–400 m) have something within 25 m`);}
   w.setView(0);w.setTime(0);
   result.ok=result.problems.length===0;
 }catch(e){result.error=String(e.stack||e).split('\n').slice(0,4).join(' | ');}

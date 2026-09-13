@@ -192,8 +192,9 @@ export const MOODS={
   'after-rain':     {elevationDeg:24, azimuthDeg:125, turbidity:6,  sunIntensity:1.6, sunColor:0xfff0dc, envIntensity:0.45, fill:0.2,  exposure:0.5,  fogDensity:0.005, shadowRadius:3},
 };
 
-export function setupOutdoorRendering(scene, camera, {canvas, bounds, mood='clear-day', aoRadius=0.5, fog=true, bloom=false, ...override}={}) {
+export function setupOutdoorRendering(scene, camera, {canvas, bounds, mood='clear-day', aoRadius=0.5, fog=true, bloom=false, scale='stage', ...override}={}) {
   if(cpuStub())return stubRig(scene);
+  if(scale==='large')return setupLargeOutdoorRendering(scene, camera, {canvas, bounds, mood, aoRadius, fog, bloom, ...override});
   // accept the short spellings builders reach for; a silently ignored azimuth leaves the stage back-lit
   if(override.azimuth!==undefined&&override.azimuthDeg===undefined)override.azimuthDeg=override.azimuth;if(override.elevation!==undefined&&override.elevationDeg===undefined)override.elevationDeg=override.elevation;if(override.sunAzimuth!==undefined)override.azimuthDeg=override.sunAzimuth;if(override.sunElevation!==undefined)override.elevationDeg=override.sunElevation;
   if(!MOODS[mood])throw Error('Unknown mood: '+mood+'. Use one of '+Object.keys(MOODS).join(', '));
@@ -218,6 +219,44 @@ function selfFinalizing(scene, renderer){
   const fn=function(){enableShadows(scene); applyTextureDefaults(scene, renderer); frames=1;};
   fn.tick=()=>{if(frames===0||(++frames%300===0))fn();};
   return fn;
+}
+
+
+/**
+ * Large-world variant (a town, a valley, a city to the horizon): the sun becomes cascaded shadow maps that follow the
+ * camera, so shadows stay crisp at the stage and still exist a kilometre away; fog is thinner and the camera far plane
+ * is pushed out. Materials are wired to the cascades at finalize() (and again as render() sees new ones), so build
+ * everything, then call rig.finalize(). `csmMaxFar` bounds the shadowed distance (default 900 m).
+ */
+export async function loadCSM(){return (await import('three/addons/csm/CSM.js')).CSM;}
+export function setupLargeOutdoorRendering(scene, camera, {canvas, bounds, mood='clear-day', aoRadius=0.7, fog=true, bloom=false, csmMaxFar=600, cascades=3, shadowMapSize=2048, ...override}={}) {
+  if(override.azimuth!==undefined&&override.azimuthDeg===undefined)override.azimuthDeg=override.azimuth;if(override.elevation!==undefined&&override.elevationDeg===undefined)override.elevationDeg=override.elevation;
+  if(!MOODS[mood])throw Error('Unknown mood: '+mood+'. Use one of '+Object.keys(MOODS).join(', '));
+  const m={...MOODS[mood], ...override};
+  const renderer=createRenderer({canvas, exposure:m.exposure});
+  const env=createSkyEnvironment(scene, renderer, {elevationDeg:m.elevationDeg, azimuthDeg:m.azimuthDeg, turbidity:m.turbidity, envIntensity:m.envIntensity});
+  camera.far=Math.max(camera.far, 3000); camera.updateProjectionMatrix();
+  const skyFill=m.fill>0?createSkyFill(scene, {intensity:m.fill}):null;
+  if(fog)addAtmosphere(scene, {density:Math.min(m.fogDensity, 0.0012)});
+  const post=createPostChain(renderer, scene, camera, {aoRadius, aoBounds:bounds, bloom});
+  window.addEventListener('resize', ()=>post.setSize(window.innerWidth, window.innerHeight));
+  // cascades: built once the addon loads; until then a plain sun keeps the first frames lit
+  let csm=null;const sunDir=env.sun.clone().normalize();
+  const fallback=createSunLight(scene, env.sun, {intensity:m.sunIntensity, color:m.sunColor, bounds, radius:m.shadowRadius});
+  const wired=new WeakSet();
+  // CSM.setupMaterial installs its own onBeforeCompile; the surface and ground detail layers live there too, so chain them
+  const wire=()=>{if(!csm)return;scene.traverse(o=>{if(!o.isMesh)return;for(const mat of [].concat(o.material))if(mat&&!wired.has(mat)){wired.add(mat);const prev=mat.onBeforeCompile,prevKey=mat.customProgramCacheKey;csm.setupMaterial(mat);const hook=mat.onBeforeCompile;
+    if(prev)mat.onBeforeCompile=(shader,renderer)=>{prev.call(mat,shader,renderer);hook.call(mat,shader,renderer);};
+    const csmKey=mat.customProgramCacheKey;mat.customProgramCacheKey=()=>(prevKey?prevKey.call(mat):'')+'|'+(csmKey?csmKey.call(mat):'csm');mat.needsUpdate=true;}});};
+  loadCSM().then(CSM=>{csm=new CSM({camera, parent:scene, cascades, maxFar:csmMaxFar, mode:'practical', shadowMapSize, lightDirection:sunDir.clone().negate(), lightIntensity:m.sunIntensity, lightMargin:150});csm.fade=true;
+    for(const l of csm.lights){l.color.set(m.sunColor);l.shadow.bias=-0.0003;l.shadow.normalBias=0.06;}
+    scene.remove(fallback);scene.remove(fallback.target);wire();rig.csm=csm;}).catch(e=>console.warn('CSM unavailable, single sun kept',e));
+  let frames=0;
+  const finalize=function(){enableShadows(scene); applyTextureDefaults(scene, renderer); wire(); frames=1;};
+  const rig={renderer, env, sun:fallback, skyFill, post, csm:null, large:true,
+    render(){if(frames===0||(++frames%300===0))finalize();if(csm){csm.update();}post.render();},
+    setSize(w,h){post.setSize(w,h);if(csm)csm.updateFrustums();}, finalize};
+  return rig;
 }
 
 /** Interior/night variant: room environment for reflections, no sun; add your own lamps with castShadow. */

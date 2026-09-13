@@ -80,3 +80,27 @@ createStall({width=2.2,depth=1.2,counterHeight=0.9,produce:[colours],seed}) → 
 transferAt(time, {contactTime, releaseTime, settleTime, total?=1}) → {phase:'approach'|'transfer'|'settle'|'rest', progress:0..1, received, remaining, active, settleProgress:0..1}
   // Use `.progress` (or `.settleProgress`) explicitly; the object also coerces to `progress` in arithmetic/clamp, but never pass it where a plain number is stored.
 ```
+
+// terrain.js  (a landscape to the horizon; heights relative to the stage pad at y=0)
+createTerrain({size=2000, seed, relief:'flat'|'rolling'|'valley'|'hills'|'coast', amplitude?, valleyOffset?=0, waterLevel?=null (sea/lake plane, relative), nearRadius=250, nearRes=1, farRes=8,
+  stage:{x,z,radius,height?}, roads:[[[x,z],...] | {points,width,verge}], pads:[{x,z,r,blend,h?}], smoothRegions:[{x,z,r,blend,radius,flatten}], tints:[{x,z,r,blend,color,amount}], rivers:[{points,width,depth,bank,drop}], colors?, detail=true})
+  → {group, height(x,z), normal(x,z), slope(x,z), roadMask(x,z), isWater(x,z), buildable(x,z), place(obj,x,z,{yaw,align,sink}), pave({x,z,r,material}) → Mesh, roadSurfaces(material,{roads?,offset?,width?,lift?}) → Group, roads[{at(s),nearest(x,z),length,width}], rivers[...], stage}
+noise2(x,y,seed) fbm(x,y,seed,{octaves,scale}) ridged(x,y,seed,{scale})
+
+// settlement.js  (streets, lots, buildings; plan first, carve the terrain with plan.roads/pads, then build)
+planSettlement({center:[x,z], kind:'hamlet'|'village'|'town'|'city', seed, radius?, axis:[dx,dz], stageRadius, mainRoad?, styles?}) → {streets, roads, lots, pads, square, smoothRegion, tint, walkNetwork, center, radius, kind}
+buildSettlement(plan, terrain, {seed, detailRadius=260, materials?, stage?}) → {group, buildings:[{x,z,yaw,w,d,storeys,door:{x,z,facing}}], doors, occupied(x,z,margin), materials, plan}
+  // walls with real reveals (wallWithOpenings + shaded rooms), frames, panes, shutters, planked doors, plinths, eaves, gable/hip roofs (tile/slate/thatch), chimneys, dormers, shopfronts on the square, a church, barns in hamlets,
+  // setts on the square, paved streets with flagstone pavements, front walls with gates, benches and lamp posts; houses merged per 60 m chunk
+createBuilding({w,d,storeys,style:'stone'|'plaster'|'brick'|'timber',roof:'tile'|'slate'|'thatch',roofKind:'gable'|'hip',seed,M,detailed,landmark:'church'|'barn'|null,terrace,shopfront}) → Group (origin floor centre, door on +z)
+buildBridges(terrain,{materials,seed}) → {group, bridges}   // a stone arch bridge wherever a road crosses a river
+mergeStatic(group) → Group of one Mesh per material signature      mergeByChunk(groups,{cell=60}) → Group
+
+// scatter.js  (the fill: woods, hedged fields, crops, rocks, grass, street and yard trees, props, people, animals)
+scatterVegetation({terrain, settlement, seed, treeCount=2500, region=900, nearRadius=220, fields=true, grassRadius=70, rockCount=400}) → {group, trees:[[x,z]], species}
+scatterProps({terrain, settlement, seed, radius=220, extra:{name:seed=>Object3D}}) → {group, count, makers}   // barrels, crates, benches, log piles, washing lines by doors; a well on the square; lamps on the main street; haystacks
+populate({terrain, settlement, seed, people=16, animals=8, radius=140}) → {group, walkers, grazers, update(t)}   // low-detail figures walking the street network, sheep and horses grazing
+treeSpecies(seed) → {oak,ash,birch,pine:{near,far,material,height}}
+
+// render-preset.js large mode
+setupOutdoorRendering(scene, camera, {..., scale:'large', csmMaxFar=600, cascades=3}) → same rig; cascaded shadow maps follow the camera, camera.far ≥ 3000, thin fog; call rig.finalize() after building

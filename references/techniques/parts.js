@@ -160,7 +160,8 @@ export const ACCESSORIES=['none','none','belt','scarf','satchel','glasses','belt
  * userData.pose(t,{walk,speed,distance,lean}); pass `distance` travelled so the stride locks to the ground.
  * Origin at the feet, faces +Z. userData.parts = {head, legs:[{hip,knee}], arms:[{sh,elbow}], carry, bones}.
  */
-export function jointedFigure({height=null,build=1,body='m',child=false,skin=null,hair=null,top=0x5a6b7c,topPattern=null,collar=false,sleeves=null,trousers=0x3b3630,shorts=false,dress=null,boots=0x2a2420,coat=null,apron=null,hat=null,hairStyle=null,facialHair=null,accessory=null,seed=1}={}){
+export function jointedFigure({height=null,build=1,body='m',child=false,skin=null,hair=null,top=0x5a6b7c,topPattern=null,collar=false,sleeves=null,trousers=0x3b3630,shorts=false,dress=null,boots=0x2a2420,coat=null,apron=null,hat=null,hairStyle=null,facialHair=null,accessory=null,seed=1,lod='full'}={}){
+  /* lod:'low' = background figure: mitten hands, no face parts (a crowd of forty stays under budget) */
   const r=rng(seed);if(height===null)height=child?1.2:body==='f'?1.65:1.75;const H=vary(r,height,0.05);build=vary(r,build*(child?0.8:body==='f'?0.92:1),0.1);const g=group('figure');const num=(v,d)=>Number.isFinite(+v)?+v:d;
   const pick=a=>a[Math.floor(r()*a.length)];const fem=body==='f';
   if(skin===null)skin=pick(SKIN_TONES);if(hair===null)hair=pick(HAIR_COLOURS);if(hairStyle===null)hairStyle=fem?pick(['long','long','bun','fringe','short']):child?pick(['short','cropped','fringe']):pick(HAIR_STYLES);if(facialHair===null)facialHair=(fem||child)?'none':pick(FACIAL_HAIR);if(accessory===null)accessory=child?pick(['none','none','cap']):pick(ACCESSORIES);
@@ -211,8 +212,8 @@ export function jointedFigure({height=null,build=1,body='m',child=false,skin=nul
   tube([{x:0,y:collarY-0.02*H,z:0,rx:neckR,rz:neckR,w:[[bi(neck),1]]},{x:0,y:hbY+headR*0.35,z:0,rx:neckR*0.95,rz:neckR*0.95,w:[[bi(headB),1]]}],mSkin,{segs:12});
   // hands: palm, four curling fingers and a thumb on each hand bone; hold() curls them around the object
   const buildHand=(a,sx)=>{const hg=new THREE.Group();hg.position.y=-0.005*H;a.hand.add(hg);const pw=0.042*H,pl=0.05*H,pt=0.018*H;
-    const palm=mesh(new THREE.SphereGeometry(1,12,8),mSkin);palm.scale.set(pw*0.5,pl*0.5,pt*0.5);palm.position.y=-pl*0.5;hg.add(palm);
-    const fingers=[];for(let k=0;k<4;k++){const fx=(k-1.5)*pw*0.24;const root=new THREE.Group();root.position.set(fx,-pl*0.95,0);const len=0.04*H*(k===0||k===3?0.85:1);
+    const palm=mesh(new THREE.SphereGeometry(1,lod==='low'?6:12,lod==='low'?5:8),mSkin);palm.scale.set(pw*0.5,pl*(lod==='low'?0.9:0.5),pt*0.5);palm.position.y=-pl*0.5;hg.add(palm);
+    const fingers=[];if(lod==='low'){a.handRig={group:hg,fingers,thumb:null,curl(){}};return hg;}for(let k=0;k<4;k++){const fx=(k-1.5)*pw*0.24;const root=new THREE.Group();root.position.set(fx,-pl*0.95,0);const len=0.04*H*(k===0||k===3?0.85:1);
       const f1=mesh(new THREE.CylinderGeometry(0.0055*H,0.0065*H,len*0.55,6,1),mSkin);f1.position.y=-len*0.275;root.add(f1);const mid=new THREE.Group();mid.position.y=-len*0.55;root.add(mid);
       const f2=mesh(new THREE.CylinderGeometry(0.0045*H,0.0055*H,len*0.45,6,1),mSkin);f2.position.y=-len*0.225;mid.add(f2);const tip=mesh(new THREE.SphereGeometry(0.0048*H,6,5),mSkin);tip.position.y=-len*0.45;mid.add(tip);hg.add(root);fingers.push({root,mid});}
     const thumb=new THREE.Group();thumb.position.set(-sx*pw*0.55,-pl*0.35,pt*0.2);thumb.rotation.z=sx*0.9;thumb.rotation.y=-sx*0.4;const t1=mesh(new THREE.CylinderGeometry(0.006*H,0.0075*H,0.03*H,6,1),mSkin);t1.position.y=-0.015*H;thumb.add(t1);hg.add(thumb);
@@ -262,12 +263,12 @@ export function jointedFigure({height=null,build=1,body='m',child=false,skin=nul
   const jaw=sph(headR*0.78,mSkin);jaw.position.set(0,head.position.y-headR*0.45,headR*0.1);jaw.scale.set(0.85,0.7,0.9);hg.add(jaw);
   const hy=head.position.y;
   // face: eyes with pupils, brows, nose, mouth, ears
-  for(const s of [-1,1]){const eye=sph(headR*0.11,std(0xf4f0ea,0.4),10,8);eye.position.set(s*headR*0.34,hy+headR*0.02,headR*0.82);eye.scale.set(1,0.8,0.55);hg.add(eye);
+  if(lod!=='low')for(const s of [-1,1]){const eye=sph(headR*0.11,std(0xf4f0ea,0.4),10,8);eye.position.set(s*headR*0.34,hy+headR*0.02,headR*0.82);eye.scale.set(1,0.8,0.55);hg.add(eye);
     const pupil=sph(headR*0.05,std(0x1a1410,0.3),8,6);pupil.position.set(s*headR*0.34,hy+headR*0.02,headR*0.88);hg.add(pupil);
     const brow=box(headR*0.3,headR*0.045,headR*0.06,mHair,s*headR*0.34,hy+headR*0.2,headR*0.86);brow.rotation.z=-s*0.15;brow.rotation.x=0.3;hg.add(brow);}
-  const nose=sph(headR*0.16,mSkin,8,6);nose.position.set(0,hy-headR*0.12,headR*0.92);nose.scale.set(0.8,1,1.2);hg.add(nose);
-  const mouth=box(headR*0.36,headR*0.05,headR*0.05,std(toColor(0x8a4a3a,r,0.1),0.6),0,hy-headR*0.45,headR*0.86);mouth.rotation.x=0.35;hg.add(mouth);
-  for(const s of [-1,1]){const ear=sph(headR*0.2,mSkin,8,6);ear.position.set(s*headR*0.9,hy,0);ear.scale.set(0.5,1,0.8);hg.add(ear);}
+  const nose=sph(headR*0.16,mSkin,8,6);nose.position.set(0,hy-headR*0.12,headR*0.92);nose.scale.set(0.8,1,1.2);if(lod!=='low')hg.add(nose);
+  const mouth=box(headR*0.36,headR*0.05,headR*0.05,std(toColor(0x8a4a3a,r,0.1),0.6),0,hy-headR*0.45,headR*0.86);mouth.rotation.x=0.35;if(lod!=='low')hg.add(mouth);
+  if(lod!=='low')for(const s of [-1,1]){const ear=sph(headR*0.2,mSkin,8,6);ear.position.set(s*headR*0.9,hy,0);ear.scale.set(0.5,1,0.8);hg.add(ear);}
   // facial hair
   const mBeard=std(tint(hair),0.95);
   if(facialHair==='beard'){const b=sph(headR*0.82,mBeard,14,10);b.position.set(0,hy-headR*0.55,headR*0.12);b.scale.set(0.95,0.75,0.9);hg.add(b);}

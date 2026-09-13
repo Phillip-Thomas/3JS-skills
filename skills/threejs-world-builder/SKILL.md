@@ -49,6 +49,38 @@ The best-graded builds differ from the rest in density and cohesion, not in extr
 8. **Fix what the look shows, in order:** a too-even or shaded facade (turn the sun), a blocky silhouette on the nearest animal or figure (resculpt), coarse texture scale (retile), then contact and clutter.
 9. **End verified.** The last thing you do before writing the account is a CPU check or sanity run after your final edit. An edit made after the last check ships blind, and a build whose last look showed a fault that was then fixed without re-checking is the most common way a finished-looking world arrives broken. Looks spent, geometry still wrong: fix it, run the check, then stop.
 
+## 3c. The world beyond the stage
+
+A brief names a stage: one stall, one forge, one quay. The place it belongs to is the rest of the deliverable. A viewer who
+walks off the stage must find a whole settlement and the land it sits in, filled to the horizon, not a bare plane. Build
+the stage by hand as before; generate everything around it with the world modules and configure them in a dozen lines:
+
+```js
+import {createTerrain} from './terrain.js';
+import {planSettlement,buildSettlement,buildBridges} from './settlement.js';
+import {scatterVegetation,scatterProps,populate} from './scatter.js';
+const plan=planSettlement({center:[0,0],kind:'town',seed,axis:[1,0.2],stageRadius:26});        // hamlet | village | town | city
+const terrain=createTerrain({size:2200,seed,relief:'valley',valleyOffset:200,nearRadius:260,stage:{x:0,z:0,radius:26},
+  roads:[...plan.roads,[[-1000,-40],[-300,0]],[[300,0],[1000,180]]],pads:plan.pads,smoothRegions:[plan.smoothRegion],tints:[plan.tint],
+  rivers:[{points:[[-40,-1100],[190,-120],[260,1100]],width:14,depth:3}]});
+scene.add(terrain.group);
+const town=buildSettlement(plan,terrain,{seed,detailRadius:220});scene.add(town.group);scene.add(buildBridges(terrain,{materials:town.materials}).group);
+scene.add(scatterVegetation({terrain,settlement:town,seed,treeCount:3200,region:950}).group);
+scene.add(scatterProps({terrain,settlement:town,seed,radius:240}).group);
+const folk=populate({terrain,settlement:town,seed,people:16,animals:8});scene.add(folk.group);   // folk.update(t) in your timeline
+terrain.place(stage,0,0);                                                                        // the hand-built stage on the pad
+const rig=setupOutdoorRendering(scene,camera,{canvas,bounds,mood,scale:'large'});               // cascaded shadows to 600 m, far plane 3 km
+window.worldTest={...,groundHeight:(x,z)=>terrain.height(x,z)};                                  // lets the sweep camera walk the land
+```
+
+Heights are relative to the stage (the stage pad is y=0). Plan first, then carve the terrain with the plan's roads and pads,
+then build: streets are corridors in the ground, lots are flattened pads, a town sits on ground smoothed over sixty metres.
+Every module is seeded, instanced and budgeted: a town of 120 houses with 3,000 trees, hedged fields, crops, rocks, grass,
+props at every door, walkers on the streets and animals in the fields builds in about fifteen seconds and renders at 60 fps
+(about 7,000 draws). Walk controls must follow `terrain.height` so the viewer stays on the ground.
+The CPU check reports an explorable radius and how many far sample points have something near them; graders receive sweep
+frames from 60, 150 and 300 metres out. A world that ends at the stage now fails both.
+
 ## 4. Helpers
 
 Copy the helper modules you use from `./references/techniques/` into `./world/` and import them relatively:
@@ -57,7 +89,7 @@ Copy the helper modules you use from `./references/techniques/` into `./world/` 
 cp ./references/techniques/{render-preset,surface-materials,pbr-fields,wall-openings,causal-state,parts,props}.js ./world/
 ```
 
-Available: `render-preset.js` (required), `surface-materials.js` + `pbr-fields.js` (required by parts.js: copy all three), `metric-surface.js` + `procedural-masonry.js`, `aperiodic-ground.js`, `wall-openings.js`, `support-frame.js`, `causal-state.js`, `parts.js` (the construction patterns: planked panel, frame + hinge, legged top, lathe, hollow vessel, spoked wheel, jointed limb, lofted hull, canvas over posts, cluster fill, and the living patterns `jointedFigure` (person with coat/apron/hat), `quadruped` (dog, horse; scale `shoulder` for cat, sheep, cow) and `fowl` (hen, rooster), each with a deterministic `pose(t)` gait; use these for every person and animal instead of stacking capsules yourself. When something walks, its stride must match its motion: pass `distance` (metres travelled so far along its path) to `pose`, or move it with `walkBetween`/`walkAlong`, which do this for you. A figure whose legs cycle at one rate while it slides across the ground at another is the most visible animation defect there is. Likewise nothing is ever carried beside a hand: use `figure.userData.hold(obj,{hand})` so the object rides in the hand and the arm is posed around it, `reach` (or `pose(t,{reach})`) to put a hand on a counter, rack or lever, and `release(obj,newParent)` for hand-overs), `characters.js` (thin wrappers over those living patterns plus `walkBetween`) and `props.js` (short compositions of those patterns: workbench, table, stool, bench, crate, sack, barrel, bucket, plant pot, door, window, task lamp, hand tools, wall clock, hand cart, trough, boat, market stall). Give every call a different `seed` so no two pieces match. When the brief names an object props.js lacks, compose it from parts.js the way props.js does; do not build it from raw boxes. Read [HELPERS.md](../../references/techniques/HELPERS.md) for every signature in one page instead of opening the sources. Never import from `./skills` in browser code; the world must run from `./world/` alone.
+Available: `render-preset.js` (required), `surface-materials.js` + `pbr-fields.js` (required by parts.js: copy all three), `terrain.js` + `settlement.js` + `scatter.js` (the world beyond the stage; they import aperiodic-ground, procedural-masonry, wall-openings and parts, so copy those too), `metric-surface.js` + `procedural-masonry.js`, `aperiodic-ground.js`, `wall-openings.js`, `support-frame.js`, `causal-state.js`, `parts.js` (the construction patterns: planked panel, frame + hinge, legged top, lathe, hollow vessel, spoked wheel, jointed limb, lofted hull, canvas over posts, cluster fill, and the living patterns `jointedFigure` (person with coat/apron/hat), `quadruped` (dog, horse; scale `shoulder` for cat, sheep, cow) and `fowl` (hen, rooster), each with a deterministic `pose(t)` gait; use these for every person and animal instead of stacking capsules yourself. When something walks, its stride must match its motion: pass `distance` (metres travelled so far along its path) to `pose`, or move it with `walkBetween`/`walkAlong`, which do this for you. A figure whose legs cycle at one rate while it slides across the ground at another is the most visible animation defect there is. Likewise nothing is ever carried beside a hand: use `figure.userData.hold(obj,{hand})` so the object rides in the hand and the arm is posed around it, `reach` (or `pose(t,{reach})`) to put a hand on a counter, rack or lever, and `release(obj,newParent)` for hand-overs), `characters.js` (thin wrappers over those living patterns plus `walkBetween`) and `props.js` (short compositions of those patterns: workbench, table, stool, bench, crate, sack, barrel, bucket, plant pot, door, window, task lamp, hand tools, wall clock, hand cart, trough, boat, market stall). Give every call a different `seed` so no two pieces match. When the brief names an object props.js lacks, compose it from parts.js the way props.js does; do not build it from raw boxes. Read [HELPERS.md](../../references/techniques/HELPERS.md) for every signature in one page instead of opening the sources. Never import from `./skills` in browser code; the world must run from `./world/` alone.
 
 ## Checking your work
 

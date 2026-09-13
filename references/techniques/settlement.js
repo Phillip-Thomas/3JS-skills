@@ -60,11 +60,15 @@ export function planSettlement({center=[0,0],kind='village',seed=1,radius=null,a
           const u=bu+(du?du*(half-sw/2-3-d/2):s+w/2),v=bv+(dv?dv*(half-sw/2-3-d/2):s+w/2);
           const yaw=Math.atan2(ax.x,ax.y)+(du?(du>0?-Math.PI/2:Math.PI/2):(dv>0?0:Math.PI));
           const [x,z]=P(u,v);const storeys=K.storeys[0]+Math.floor(r()*(K.storeys[1]-K.storeys[0]+1))-(dist>0.8&&r()<0.5?1:0);
-          const gap=r()<0.15?3:0;const lot={x,z,yaw,w,d,storeys:Math.max(1,storeys),style:null,roof:null,terrace:{left:false,right:false},s0:s,s1:s+w};row.push(lot);lots.push(lot);count++;s+=w+0.25+gap;}
+          // plan-space footprint; a lot that would overlap one already placed (the perpendicular row at a block corner) is skipped
+          const hu=du?d/2:w/2,hv=du?w/2:d/2;const gap=r()<0.15?3:0;
+          if(lots.some(o=>o.pu!==undefined&&Math.abs(o.pu-u)<o.hu+hu-0.05&&Math.abs(o.pv-v)<o.hv+hv-0.05)){s+=w+0.25+gap;continue;}
+          const lot={x,z,yaw,w,d,storeys:Math.max(1,storeys),style:null,roof:null,terrace:{left:false,right:false},s0:s,s1:s+w,pu:u,pv:v,hu,hv};row.push(lot);lots.push(lot);count++;s+=w+0.25+gap;}
         // a side wall is a party wall only where the neighbour in the row actually abuts (gap under 0.4 m)
         for(let k=0;k<row.length;k++){const a=row[k],b=row[k+1];if(b&&b.s0-a.s1<0.4){a.terrace.right=true;b.terrace.left=true;}}}}
     // landmark on the square's edge and a couple of larger halls
-    const [lx,lz]=P(0,-(square.r+16));lots.push({x:lx,z:lz,yaw:Math.atan2(ax.x,ax.y)+Math.PI,w:14,d:26,storeys:3,landmark:'church'});
+    const [lx,lz]=P(0,-(square.r+16));const cu=0,cv=-(square.r+16);for(let i=lots.length-1;i>=0;i--){const o=lots[i];if(o.pu!==undefined&&Math.abs(o.pu-cu)<o.hu+7+1&&Math.abs(o.pv-cv)<o.hv+13+1)lots.splice(i,1);}
+    lots.push({x:lx,z:lz,yaw:Math.atan2(ax.x,ax.y)+Math.PI,w:14,d:26,storeys:3,landmark:'church',pu:cu,pv:cv,hu:7,hv:13});
   }
   // styles: a palette per settlement so it reads as one place
   const palette=styles??(kind==='city'?['brick','brick','plaster','stone']:kind==='town'?['plaster','stone','timber','brick']:['stone','stone','plaster','timber']);

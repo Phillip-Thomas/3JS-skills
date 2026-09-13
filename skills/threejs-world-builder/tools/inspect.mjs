@@ -101,7 +101,7 @@ try{
   const page=await browser.newPage({viewport:{width:1280,height:800},deviceScaleFactor:1});
   await page.route(/\/favicon\.ico$/,r=>r.fulfill({status:204,body:''}));
   page.on('pageerror',e=>result.startupErrors.push(e.message));page.on('console',m=>{if(m.type()==='error')result.consoleErrors.push(m.text());});
-  await page.goto(url);
+  await page.goto(url,{waitUntil:"commit",timeout:180000}); // large worlds build for 20–30 s before load completes
   const ready=await Promise.race([page.waitForFunction(()=>window.worldTest?.ready,{},{timeout:90000}).then(()=>true),new Promise(r=>setTimeout(()=>r(false),90000))]);
   if(!ready||result.startupErrors.length)throw Error('World did not start: '+(result.startupErrors[0]||'worldTest.ready never became true'));
   const contract=await page.evaluate(()=>{const w=worldTest;const s=w.stats();const ok=e=>e&&typeof e.name==='string'&&Array.isArray(e.position)&&e.position.length===3&&e.position.every(Number.isFinite);

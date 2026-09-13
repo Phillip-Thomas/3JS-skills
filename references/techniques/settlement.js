@@ -55,11 +55,14 @@ export function planSettlement({center=[0,0],kind='village',seed=1,radius=null,a
       const dist=Math.hypot(bu,bv)/R;if(dist>1.05&&r()<0.7)continue; // ragged edge of town
       for(const [du,dv,yawSide] of [[0,-1,0],[0,1,Math.PI],[-1,0,Math.PI/2],[1,0,-Math.PI/2]]){
         const edgeLen=block-sw-6;let s=-edgeLen/2+2;
+        const row=[];
         while(s<edgeLen/2-4){const w=6+r()*5,d=7+r()*4;if(s+w>edgeLen/2)break;
-          const u=bu+(du?du*(half-sw/2-3-d/2):s),v=bv+(dv?dv*(half-sw/2-3-d/2):s);
+          const u=bu+(du?du*(half-sw/2-3-d/2):s+w/2),v=bv+(dv?dv*(half-sw/2-3-d/2):s+w/2);
           const yaw=Math.atan2(ax.x,ax.y)+(du?(du>0?-Math.PI/2:Math.PI/2):(dv>0?0:Math.PI));
           const [x,z]=P(u,v);const storeys=K.storeys[0]+Math.floor(r()*(K.storeys[1]-K.storeys[0]+1))-(dist>0.8&&r()<0.5?1:0);
-          lots.push({x,z,yaw,w,d,storeys:Math.max(1,storeys),style:null,roof:null,terrace:true});count++;s+=w+0.25+(r()<0.15?3:0);}}}
+          const gap=r()<0.15?3:0;const lot={x,z,yaw,w,d,storeys:Math.max(1,storeys),style:null,roof:null,terrace:{left:false,right:false},s0:s,s1:s+w};row.push(lot);lots.push(lot);count++;s+=w+0.25+gap;}
+        // a side wall is a party wall only where the neighbour in the row actually abuts (gap under 0.4 m)
+        for(let k=0;k<row.length;k++){const a=row[k],b=row[k+1];if(b&&b.s0-a.s1<0.4){a.terrace.right=true;b.terrace.left=true;}}}}
     // landmark on the square's edge and a couple of larger halls
     const [lx,lz]=P(0,-(square.r+16));lots.push({x:lx,z:lz,yaw:Math.atan2(ax.x,ax.y)+Math.PI,w:14,d:26,storeys:3,landmark:'church'});
   }
@@ -123,7 +126,8 @@ export function createBuilding({w=8,d=8,storeys=2,style='stone',roof='tile',roof
     return openings;};
   const walls=[{len:w,z:d/2,yaw:0,door:true},{len:w,z:d/2,yaw:Math.PI,door:false},{len:d,z:w/2,yaw:Math.PI/2,door:false},{len:d,z:w/2,yaw:-Math.PI/2,door:false}]; // z = distance from centre along the wall's facing
   const wins=[];
-  for(const wl of walls){const side=(wl.yaw===Math.PI/2||wl.yaw===-Math.PI/2);if(terrace&&side)continue; // party walls in a terrace are hidden
+  const party=wl=>{if(!terrace)return false;if(terrace===true)return wl.yaw===Math.PI/2||wl.yaw===-Math.PI/2;return (wl.yaw===Math.PI/2&&terrace.right)||(wl.yaw===-Math.PI/2&&terrace.left);};
+  for(const wl of walls){if(party(wl))continue; // party walls in a terrace are hidden only where a neighbour abuts
     const openings=facade(wl.len,wl,{door:wl.door});
     // real reveals on every building at any distance (a flat wall with painted windows reads as a toy from 300 m);
     // frames, panes and door leaves only within detailRadius
@@ -158,7 +162,7 @@ export function createBuilding({w=8,d=8,storeys=2,style='stone',roof='tile',roof
   // chimney(s)
   const chimneys=1+(w>9?1:0);for(let i=0;i<chimneys;i++){const cx=(i===0?-1:1)*(w/2-0.9);const c=box(0.7,rh+1.2,0.7,M.chimney,cx,H+eaveH+(rh+1.2)/2-0.3,0);g.add(c);g.add(box(0.9,0.12,0.9,M.plinth,cx,H+eaveH+rh+0.85,0));}
   if(landmark==='church'){const t=box(5,H*1.9,5,wallMat,0,H*0.95,-d/2-2.5);g.add(t);const spire=new THREE.Mesh(new THREE.ConeGeometry(3.4,9,4),M.slate);spire.rotation.y=Math.PI/4;spire.position.set(0,H*1.9+4.5,-d/2-2.5);spire.castShadow=true;g.add(spire);}
-  if(style==='timber'&&detailed){const studs=new THREE.Group();for(const wl of walls){if(terrace&&(wl.yaw===Math.PI/2||wl.yaw===-Math.PI/2))continue;const n=Math.max(2,Math.round(wl.len/2.2));
+  if(style==='timber'&&detailed){const studs=new THREE.Group();for(const wl of walls){if(party(wl))continue;const n=Math.max(2,Math.round(wl.len/2.2));
     for(let i=0;i<=n;i++){const s=box(0.12,H-0.5,0.06,M.darkWood,-wl.len/2+wl.len*i/n,H/2+0.25,wallDepth/2+0.03);s.rotation.y=0;const holder=new THREE.Group();holder.rotation.y=wl.yaw;holder.position.set(Math.sin(wl.yaw)*wl.z,0,Math.cos(wl.yaw)*wl.z);holder.add(s);studs.add(holder);}
     for(let s=1;s<storeys;s++){const holder=new THREE.Group();holder.rotation.y=wl.yaw;holder.position.set(Math.sin(wl.yaw)*wl.z,0,Math.cos(wl.yaw)*wl.z);holder.add(box(wl.len,0.14,0.06,M.darkWood,0,s*storeyH,wallDepth/2+0.03));studs.add(holder);}}
     g.add(studs);}

@@ -197,6 +197,11 @@ export function mergeByChunk(items,{cell=60,name='chunks'}={}){
 export function buildSettlement(plan,terrain,{seed=plan.seed??1,detailRadius=260,materials=null,stage=null}={}){
   const M=materials??materialSet(seed);const g=new THREE.Group();g.name=`settlement-${plan.kind}`;
   const buildings=[],doors=[],placed=[];const sx=stage?.x??terrain.stage.x,sz=stage?.z??terrain.stage.z;
+  // party walls decided geometrically: a side wall is dropped only when a probe 0.4 m outside its midpoint lands inside
+  // another lot's footprint (the plan's row order does not know which world side is which)
+  const inLot=(o,px,pz)=>{const dx=px-o.x,dz=pz-o.z;const c=Math.cos(-o.yaw),sn=Math.sin(-o.yaw);const lx=dx*c-dz*sn,lz=dx*sn+dz*c;return Math.abs(lx)<o.w/2+0.05&&Math.abs(lz)<o.d/2+0.05;};
+  for(const l of plan.lots){if(!l.terrace)continue;const ex=Math.cos(l.yaw),ez=-Math.sin(l.yaw);/* local +x in world */const probe=sd=>{const px=l.x+ex*sd*(l.w/2+0.4),pz=l.z+ez*sd*(l.w/2+0.4);return plan.lots.some(o=>o!==l&&inLot(o,px,pz));};
+    l.terrace={right:probe(1),left:probe(-1)};if(!l.terrace.right&&!l.terrace.left)l.terrace=false;}
   for(const l of plan.lots){const dist=Math.hypot(l.x-sx,l.z-sz);const detailed=dist<detailRadius;
     const shop=!!plan.square&&Math.hypot(l.x-plan.square.x,l.z-plan.square.z)<plan.square.r+28&&!l.landmark;
     const b=createBuilding({w:l.w,d:l.d,storeys:l.storeys,style:l.style,roof:l.roof,roofKind:l.roofKind,seed:l.seed,M,detailed,landmark:l.landmark,terrace:l.terrace,shopfront:shop});

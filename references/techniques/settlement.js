@@ -75,9 +75,9 @@ export function planSettlement({center=[0,0],kind='village',seed=1,radius=null,a
   const roofs=kind==='city'?['slate','slate','tile']:kind==='town'?['tile','slate','tile']:['thatch','tile','slate'];
   for(const l of lots){l.style??=palette[Math.floor(r()*palette.length)];if(l.style==='timber'&&(l.storeys>2||l.w>9))l.style='plaster';l.roof??=roofs[Math.floor(r()*roofs.length)];l.seed=Math.floor(r()*1e6);l.roofKind=l.landmark?'gable':(r()<0.25?'hip':'gable');}
   const roads=streets.map(s=>({points:s.points,width:s.width,verge:s.kind==='main'?3:2}));
-  const pads=lots.map(l=>({x:l.x,z:l.z,r:Math.max(l.w,l.d)*0.72,blend:4}));
-  if(square)pads.unshift({x:square.x,z:square.z,r:square.r+4,blend:10});
-  const smoothRegion={x:cx,z:cz,r:R*1.15,blend:80,radius:kind==='city'?90:60};
+  const pads=lots.map(l=>({x:l.x,z:l.z,r:Math.max(l.w,l.d)*0.72,blend:6}));
+  if(square)pads.unshift({x:square.x,z:square.z,r:square.r+4,blend:45}); // a wide blend: no bank around the square
+  const smoothRegion={x:cx,z:cz,r:R*1.15,blend:80,radius:kind==='city'?90:60,flatten:kind==='hamlet'?0.5:0.85}; // towns sit nearly level
   const tint={x:cx,z:cz,r:R*0.95,blend:40,color:kind==='city'?0x8a8378:0x7a6a50,amount:kind==='hamlet'?0.3:0.45}; // trodden town ground
   return {streets,roads,lots,pads,square,smoothRegion,tint,center:[cx,cz],radius:R,kind,seed,axis:[ax.x,ax.y],walkNetwork:streets.map(s=>s.points)};
 }
